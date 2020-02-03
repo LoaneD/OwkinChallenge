@@ -4,13 +4,13 @@
 # # Predicting lung cancer survival time 
 # ## Owkin Challenge
 # 
-# The goal of this study if to predict a patient's survival time to lung cancer at a given time (given several features extracted from CT-scans). Due to the lack of time I will use directly the features extracted from the CT-scans and therefore not use the actual images.
+# The goal of this study if to predict a patient's survival time to lung cancer at a given time (given several features extracted from CT-scans). Due to the lack of time I will use directly the features extracted from the CT-scans and therefore not use the actual images. 
 # 
-# To do this we will create and train a model on a dataset composed of two sub-sets. Our training set is composed of 300 patients, for each we have a set of 53 radiomics features (extracted from the CT-scans) and 6 clinical features (TNM staging, histology, age and source dataset). The target data (which we want to predict) is the time to event variable that corresponds to the survival time if the patient died during the study (event = 1) or the amount of time after which the patient escaped the study (event = 0).
+# To do this we will create and train a model on a dataset composed of two sub-sets. Our training set is composed of 300 patients, for each we have a set of 53 radiomics features (extracted from the CT-scans) and 6 clinical features (TNM staging, histology, age and source dataset). The target data (which we want to predict) is the time to event variable that corresponds to the survival time if the patient died during the study (event = 1) or the amount of time after which the patient escaped the study (event = 0). When the patient escaped the study we called the data censored because it creates a lack in information: we only have the information that the patient was still alive up to this time but not how long he survived afterwards. It can therefore not be considered to carry the exact same relation to the parameters as a uncensored data.
 # 
 # I first opened the csv files to see there format and saw that the headers of the radiomics files were comprised of one blank line that had to remove (copy/paste 'PatientID' in the header line and remove the extra line) in order to get proper header when importing the data.
 
-# In[525]:
+# In[905]:
 
 
 import pandas as pd
@@ -23,7 +23,7 @@ clinical_train_ini = pd.read_csv('D:/Owkin_challenge/data_xtrain/features/clinic
 output_train_ini = pd.read_csv('D:/Owkin_challenge/output.csv', index_col=0)
 
 
-# Before getting started on the actual model I'm used to exploring a bit the data, to get familiar with it and start extracting some insight on our problem.
+# Before getting started on the actual model I'm used to exploring a bit the data, to get familiar with it and start extracting some insight on our problem which can be useful when selecting features and models.
 # 
 # ## Exploring the data
 # 
@@ -39,7 +39,7 @@ print(clinical_train_ini.keys())
 print(radiomics_train_ini.keys())
 
 
-# I will start by working on the radiomics table. I will check that there are no missing data and if there are I will fill them with the mean value of the corresponding feature.
+# The radiomics data consist of 53 features on different aspects of the CT-scan of the tumor. I will start by working on this table. I will check that there are no missing data and if there are I will fill them with the median value of the corresponding feature.
 
 # In[504]:
 
@@ -47,7 +47,7 @@ print(radiomics_train_ini.keys())
 radiomics_train_ini.isnull().any().any()
 
 
-# There are no missing data.
+# There are no missing data in this table so we can use it as such.
 # 
 # Next I'll have a look on the data and see if normalization of the data would be needed (normalization can be necessary if different features have very different ranges because they would introduce inner differences in weight over the output).
 
@@ -74,7 +74,9 @@ radiomics_train_norm.describe()
 
 
 # My goal is now to select a sample of the radiomics features that hold information for the prediction of survival time. This is important because non-informative variables put noise in the model and can cause overfitting and decrease the prediction precision.
-# To do so I'll use filter methods to determine the correlation between a feature and our targeted survival time. Some of our data are censored, which mean that the time-to-event value that we get from them doesn't correspond to a time of death but to a time where the subject escaped the study. 
+# To do so I'll use filter methods to determine the correlation between a feature and our targeted survival time. 
+# 
+# Some of our data are censored, which mean that the time-to-event value that we get from them doesn't correspond to a time of death but to a time where the subject escaped the study. 
 
 # In[38]:
 
@@ -82,7 +84,7 @@ radiomics_train_norm.describe()
 pd.value_counts(output_train_ini['Event']).plot.bar(title = "Repartition of death and escape from study")
 
 
-# Our dataset presents a huge part of censored data. For our correlation analysis to select relevant features we will drop the observation corresponding to censored data because the survival time doesn't have the same meaning.
+# Our dataset presents a huge part of censored data, almost half of the subjects escaped the study. For our correlation analysis to select relevant features we will drop the observation corresponding to censored data because the survival time doesn't have the same meaning. 
 
 # In[62]:
 
@@ -99,6 +101,8 @@ radiomics_uncensored = radiomics_train_norm[output_train_ini['Event'] == 1]
 pearson_table = pd.concat([radiomics_uncensored, target_uncensored], axis=1, sort=False).corr(method='pearson')
 pearson_table
 
+
+# The different features have different correlation values with the survival time, we want to select only the most important for the prediction.
 
 # In[196]:
 
@@ -153,7 +157,7 @@ clinical_train_ini.isnull().any()
 # The age is a numerical feature. I will then replace the missing values by the median value of the set and standardize it.
 # I will plot the bar graph of the histology categorical values count to check the categories repartition as well as the categories names.
 
-# In[526]:
+# In[901]:
 
 
 clinical_train_norm = clinical_train_ini.copy()
@@ -169,7 +173,7 @@ pd.value_counts(clinical_train_norm['Histology']).plot.bar(title = "Reparition o
 
 # Apart from the missing values there are also problems in the naming of the categories that are redundant. I will rename the categories to four labels: AC (adenocarcinoma), LC (large cell), SCC (squamous cell carcinoma) and nos (not otherwise specified). I will put the missing data in the last category.
 
-# In[510]:
+# In[907]:
 
 
 clinical_train_norm['Histology'] = clinical_train_ini['Histology'].replace(
@@ -187,38 +191,41 @@ clinical_uncensored = clinical_train_norm.copy()
 clinical_uncensored = clinical_train_norm[output_train_ini['Event'] == 1]
 
 
-# In[429]:
+# In[888]:
 
 
-sns.catplot(x='Histology', y='SurvivalTime', 
+sns.boxplot(x='Histology', y='SurvivalTime', 
             data = pd.concat([clinical_uncensored["Histology"],target_uncensored], axis=1, sort=False))
 
 
-# The histology of the tumor doesn't seem to give much information on the survival time seeing the repartition of dots on the above graph.
+# The histology of the tumor doesn't seem to give much information on the survival time seeing the repartition of values on the above graph : the median and first quartile are very similar on all four possibilities, only the third quartile of the histology adenocarcinoma is higher that the rest. This feature will probably not produce much insight on the survival time.
 
-# In[337]:
+# In[889]:
 
 
-sns.catplot(x='SourceDataset', y='SurvivalTime', 
+sns.boxplot(x='SourceDataset', y='SurvivalTime', 
             data = pd.concat([clinical_uncensored["SourceDataset"],target_uncensored], axis=1))
 
 
-# The dataset labelled l1 seems more correlated with early deaths than the dataset labelled l2. This feature can thus be of importance in the prediction model.
+# The dataset labelled l1 seems more correlated with early deaths than the dataset labelled l2 seeing the repartition of values: survival time of patients in the second datasets are spread over the whole time range. This feature can thus be of importance in the prediction model.
 
-# In[391]:
+# In[894]:
 
 
-sns.catplot(x='Tstage', y='SurvivalTime', hue="Nstage",
-            data = pd.concat([clinical_uncensored["Tstage"],clinical_uncensored["Nstage"],target_uncensored], axis=1))
+sns.boxplot(x='Nstage', y='SurvivalTime',
+            data = pd.concat([clinical_uncensored["Mstage"],clinical_uncensored["Tstage"],
+                              clinical_uncensored["Nstage"],target_uncensored], axis=1))
 
 
 # For the feature Mstage, the majority of data is in the category 0, there is not enough variability among the data to use it as a predictor.
-# For the feature Tstage, it seems that the majority of dots for each categorical are towards reduced survival time but the further the stage (from 1 to 4) the thinner the range of data is. This could mean that this feature can be used for the prediction.
-# For the feature Nstage, even if the category 1 is not well representated it seems that the conclusion of correlation between value and survival time can be similar as the one made for Tstage.
+# 
+# For the feature Tstage, the median value is similar for the categories 2 to 4, being lower than the median time for the category 1. Moreover the variance is greater in the first category than the others. This feature could thus be used as a predictor.
+# 
+# For the feature Nstage, the median seems similar between all categories though getting smaller towards category 3. The variance of the data are also decreasing with a higher category. It can then also be used as a interesting feature.
 # 
 # When plotting the survival time depending on both Nstage and Tstage it doesn't appear that the two stages are much related together because dots representing one Tstage are found within all Nstage values. 
 # 
-# Keeping the features Tstage and Nstage in the model could thus be useful to predict survival time.
+# Keeping the features Tstage and Nstage in the model could thus be useful to predict survival time. That seems quite a valid assumption, T and N stages being respectively the size of the original tumor and the nearby lymph nodes implicated, we can assume that the bigger the initial tumor is and the more lymph nodes there are, the fewer survival time the patient has.
 
 # In[350]:
 
@@ -226,7 +233,7 @@ sns.catplot(x='Tstage', y='SurvivalTime', hue="Nstage",
 plt.scatter(clinical_train_ini['age'][output_train_ini['Event']==1], target_uncensored)
 
 
-# The age can be an insightful feature to add to the model.
+# The age can be an insightful feature to add to the model because it seems that the variability of survival time is greater when the subject is older. This has though to be a value to be careful on because of the repartition of ages among the subjects. Indeed there are more older patients and therefore the variability can be higher that the youngest without the age being a real cause.
 # 
 # From the clinical data 4 features are then kept. To create the model I will use a one-hot encoding on the categorical data to be sure that each values of the category have the same weight in the function.
 
@@ -331,8 +338,6 @@ result = concordance_index_censored(output_train["Event"], output_train["Surviva
 result[0]
 
 
-# By using this model over our data the obtained score is of 0.699.
-# 
 # The goal of this project is to predict the survival time of each subject. The CoxPH model gives us the hazard function and the global risk of death. By computing the hazard function I can access the median time when a estimated survival probability reaches 0.5. To do so I fit an exponential function on my survival probabilities step function and I access the time when the probability is 0.5.
 # 
 # This might not be appropriate for every subject because when the probability doesn't decrease a lot the estimated median time will grow.
@@ -379,7 +384,7 @@ sns.lineplot(x=predict_train_function[0].x, y=predict_train_function[0].x)
 
 # I know have one model that can work to predict survival times.
 # 
-# Because the source of the dataset can affect the output greatly I will try to cut my dataset in 2 and to consider two distinct models depending on whether the patient is from dataset l1 or l2 and see if they achieve better predictions by themselves.
+# Because the source of the dataset can affect the output greatly as we have seen (the variability of times is greater for the second dataset) I will try to cut my dataset in 2 and to consider two distinct models depending on whether the patient is from dataset l1 or l2 and see if they achieve better predictions by themselves.
 
 # In[588]:
 
@@ -434,13 +439,15 @@ predict_train_set2, predict_fct_set2 = get_predictions(
     features_train_set2, output_train[clinical_train_ini['SourceDataset']=='l2'], model_etimator_set2, False)
 
 
+# To get the median time for this dataset I didn't used the exponential approximation because the rate of decreasing of the function is often very small (because this set comprises of a lot of uncensored data) and therefore the calculated times end up very high.
+# 
 # From the second dataset a lot of the predicted time reached the time limit, meaning that the predicted probability of survival was always above 0.5. It is interesting to see that this happened only for subjects among the second dataset. One of the main reason I see to this is the proportion of censored data in each subset : in the second dataset two third of the subjects escaped the study wheres in the first dataset only one third escaped it.
 # 
 # The correlation index is better than the last model. The reason I see are those maximum times: since the CI is calculated on the right ordering of valid pairs if two subjects have the same predicted time of 3500 days their order can be assessed as valid even if the information in it is false.
 # 
 # ### CoxPH models on two separate subsets
 # 
-# One of the problems I'm seeing is the way I'm separating my dataset in two, I'm creating two different models but I use the standardization accross the complete table and I keep the same features from both. Since I want to consider two different models for the two subsets, I need to cut my data from the beginning and do the whole scaling, features selection and model fitting process. To make it easier for next tests I will create a pipeline of this process that can be used with variations.
+# One of the problems I'm seeing is the way I separated my dataset in two, I'm creating two different models but I use the standardization accross the complete table and I keep the same features from both. Since I want to consider two different models for the two subsets, I need to cut my data from the beginning and do the whole scaling, features selection and model fitting process. To make it easier for next tests I will create a pipeline of this process that can be used with variations.
 
 # In[705]:
 
@@ -514,7 +521,7 @@ predict_2, predict_fct_2 = get_predictions(
     features2, output_train[clinical_train_ini['SourceDataset']=='l2'], model_2, False)
 
 
-# The prediction still don't seem the best. But again the large amount (almost half) of censored data if our set leads to a lot of errors in prediction.
+# The prediction still don't seem the best. But again the large amount (almost half) of censored data if the set leads to a lot of errors in prediction.
 # 
 # ### Test of the model on uncensored data
 # 
@@ -540,7 +547,7 @@ predict_uncensored, predict_fct_uncensored = get_predictions(
     features_uncensored, output_train[output_train_ini['Event']==1], model_uncensored, False)
 
 
-# With this scenario the variance of the predicted times are greatly diminished but can maybe match better the reality. When dealing with survival times a small variation to the mean is preferred.
+# With this scenario the variance of the predicted times are greatly diminished but can maybe match better the reality. When dealing with survival times a small variation to the mean is preferred. However the CoxPH model is made to work on sets with censored data so the prediction should take that into account. The large fraction of censored data in this set might be the reason it is not working as well. 
 # 
 # ### CoxPH model with the features used in the baseline model
 # In the project description, a basaline model is presented, which is the CoxPH model with 8 features of interest. I will try to run my pipeline with this characteristics.
@@ -614,7 +621,7 @@ predict_test_median2 = get_predict_time(predict_test_fct2, features_test_set2, F
 predict_test_median2.describe()
 
 
-# With the second datasets, the predicted survival times don't seem accurate, this is due to the fact that our model was constructed on mostly uncensored data from which it is hard to concluded things. 
+# With the second datasets, the predicted survival times don't seem accurate, this is due to the fact that our model was constructed on mostly uncensored data from which it is hard to concluded things. It might therefore be better to work on the entire dataset to spread the unknown fraction carried by the censored data.
 
 # In[738]:
 
@@ -781,13 +788,18 @@ output_test_RTF.to_csv(r'D:/Owkin_challenge/output_test_RSF.csv', na_rep='nan')
 
 # ## Future perspectives
 # 
-# The CoxPH model gave a 0.68 concordance index and the Random Survival Foest a 0.67 concordance index on the test set which is slighty inferior to the baseline. With more time I would go over all choices and asumptions I made to improve my model.
-# 
-# I had to stop there my study of this problem due to lack of time but if I had had more time here are the directions I'd have liked to take :
+# The CoxPH model gave a 0.68 concordance index and the Random Survival Foest a 0.67 concordance index on the test set which is slighty inferior to the baseline. With more time I would go over all choices and asumptions I made to improve my model, starting by pursuing the following ideas that I had for this project:
 # 
 # - find a way to deal with the uncensored data problem, maybe dig deeper into the CoxPH model to see how those data are dealt with. From what I saw in the litterature the used datasets are usually bigger and have a smaller proportion of censored data (here we have almost half..)
 # 
+# - when I predicted the survival times on the test sets I choose not to cut the dataset depending on the source to try and spread the censored data more but it might be more relevant to keep the datasets separated and to create a new model for the second dataset that wouldn't be fitted on that much censored data (2/3 of the source dataset l2, might be better to keep only 1/3 of censored data). But that would mean diminishing the pool of subjects to a little amount which can bring biais in the prediction with lack of variance between the features.
+# 
 # - explore a bit more the random survival forest. I only had the time to implement a quick method to test this type of model but maybe going more into it could be interesting for the predictions.
 # 
-# This has been my first real confrontation with a machine learning problem, my knowledge of the field was only academical up to this point (classes followed) with only small exercices on basic datasets. It was very interesting and formative to dive into this medical machine learning problem. 
+# - when getting documented on the subject of survival time prediction through litterature I read about accelarated failure time models which are based on the survival curve rather than the hazard function. It links the log-transformed survival time with the explanatory covariates. This can be an idea of a new model to test.
+# 
+# - when I selected the features to use for my model I checked the correlation between them and the targetted value but I believe the survival probability curve could also be traced for different categories in the features: for example plotting the survival probability curve for each of our four histology category could provide insight on the speed of the evolution of the risk within the dataset and may lead to changes in the so-thought main important features.
+# 
+# This has been my first real confrontation with a machine learning problem, my knowledge of the field was only academical up to this point (classes followed) with only small exercices on basic datasets I therefore took some time getting used to the models and wasn't able to do all of the study and exploration that I thought of. However it was very interesting and formative to dive into this medical machine learning problem which lead me to understand all the problems and difficulties that can arise from a dataset and how to find ways to work past them to make the best of it.
+# 
 # Working on this project gave me the will to continue to work on gathering knowledge and pratice over machine learning techniques to get more efficient and be able to extract insightful informations from data. 
